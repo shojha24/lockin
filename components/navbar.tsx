@@ -5,14 +5,38 @@ import { usePathname } from "next/navigation"
 import { Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet"
+import { useEffect, useState } from "react"
+import { getFirestore, doc, getDoc } from "firebase/firestore"
+import { auth } from '../firebase'
 
 export default function Navbar() {
+  const [fullName, setFullName] = useState("Login")
   const pathname = usePathname()
 
+  useEffect(() => {
+    const fetchUserData = async () => {
+      const db = getFirestore()
+      const user = auth.currentUser;
+
+      if (user) {
+        const userDocRef = doc(db, "users", user.uid)
+        const userDocSnap = await getDoc(userDocRef)
+
+        if (userDocSnap.exists()) {
+          const userData = userDocSnap.data()
+          setFullName("Logged in as " + userData.name)
+        } else {
+          console.error("No user document found!")
+        }
+      }
+    }
+    fetchUserData();
+  }, [])
+
   const routes = [
-    { name: "Setup", path: "/" },
+    { name: "Home", path: "/" },
     { name: "History", path: "/history" },
-    { name: "Login", path: "/auth" },
+    { name: fullName, path: "/auth" },
   ]
 
   return (

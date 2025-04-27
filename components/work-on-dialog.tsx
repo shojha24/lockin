@@ -15,7 +15,7 @@ interface WorkOnDialogProps {
 export default function WorkOnDialog({ onWorkOnSet }: WorkOnDialogProps) {
   const [task, setTask] = useState("")
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     onWorkOnSet(task)
   }

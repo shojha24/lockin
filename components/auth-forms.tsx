@@ -2,40 +2,103 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { use, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase';
+import { getFirestore, doc, setDoc } from "firebase/firestore"
+import { useRouter } from "next/navigation"
 
 export default function AuthForms() {
-  const [isLoading, setIsLoading] = useState(false)
+  const [loginEmail, setLoginEmail] = useState("")
+  const [loginPassword, setLoginPassword] = useState("")
+  const [signupName, setSignupName] = useState("")
+  const [signupEmail, setSignupEmail] = useState("")
+  const [signupPassword, setSignupPassword] = useState("")
+  const [signupConfirmPassword, setSignupConfirmPassword] = useState("")
 
-  const handleLogin = (e: React.FormEvent) => {
+  const [isLoading, setIsLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState("login")
+  const db = getFirestore();
+  const router = useRouter();
+
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    // Simulate API call
-    setTimeout(() => {
+    try {
+      const userCredential = await signInWithEmailAndPassword (
+        auth,
+        loginEmail,
+        loginPassword
+      )
+      console.log("Logged in user:", userCredential.user)
+      router.push("/")
+
+    } catch (error) {
+      console.error("Login error:", error)
+    } finally {
       setIsLoading(false)
-      // In a real app, you would redirect or update state here
-      console.log("Login submitted")
-    }, 1000)
+    }
   }
 
-  const handleSignup = (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
-    // Simulate API call
-    setTimeout(() => {
+
+    let user: User | null = null
+    
+    if (signupPassword !== signupConfirmPassword) {
+      console.error("Passwords do not match")
       setIsLoading(false)
-      // In a real app, you would redirect or update state here
-      console.log("Signup submitted")
-    }, 1000)
+      return
+    }
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        signupEmail,
+        signupPassword
+      )
+      user = userCredential.user
+
+      await setDoc(doc(db, "users", user.uid), {
+        name: signupName,
+        email: signupEmail,
+        password: signupPassword,
+        sessions: [],
+      })
+
+      const emailToCopy = signupEmail
+      setSignupName("")
+      setSignupEmail("")
+      setSignupPassword("")
+      setSignupConfirmPassword("")
+
+      setLoginEmail(emailToCopy)
+      setActiveTab("login")
+
+    } catch (error: any) {
+      console.error("Signup error:", error)
+
+      if (user) {
+        try {
+          await deleteUser(user)
+          console.warn("Deleted Auth user due to Firestore failure.")
+        } catch (deleteError) {
+          console.error("Failed to delete user after Firestore failure.")
+        }
+      }
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
-    <Tabs defaultValue="login" className="w-full">
+    <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
       <TabsList className="grid w-full grid-cols-2 bg-gray-900">
         <TabsTrigger value="login">Login</TabsTrigger>
         <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -53,6 +116,8 @@ export default function AuthForms() {
                   placeholder="your@email.com"
                   required
                   className="bg-gray-800 border-gray-700"
+                  value={loginEmail}
+                  onChange={(e) => setLoginEmail(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
@@ -62,7 +127,14 @@ export default function AuthForms() {
                     Forgot password?
                   </Button>
                 </div>
-                <Input id="password-login" type="password" required className="bg-gray-800 border-gray-700" />
+                <Input 
+                  id="password-login" 
+                  type="password" 
+                  required 
+                  className="bg-gray-800 border-gray-700"
+                  value={loginPassword}
+                  onChange={(e) => setLoginPassword(e.target.value)}
+                />
               </div>
             </CardContent>
             <CardFooter>
@@ -80,7 +152,14 @@ export default function AuthForms() {
             <CardContent className="space-y-4 pt-6">
               <div className="space-y-2">
                 <Label htmlFor="name-signup">Full Name</Label>
-                <Input id="name-signup" placeholder="John Doe" required className="bg-gray-800 border-gray-700" />
+                <Input 
+                  id="name-signup" 
+                  placeholder="John Doe" 
+                  required 
+                  className="bg-gray-800 border-gray-700" 
+                  value={signupName}
+                  onChange={(e) => setSignupName(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email-signup">Email</Label>
@@ -90,15 +169,31 @@ export default function AuthForms() {
                   placeholder="your@email.com"
                   required
                   className="bg-gray-800 border-gray-700"
+                  value = {signupEmail}
+                  onChange={(e) => setSignupEmail(e.target.value)}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="password-signup">Password</Label>
-                <Input id="password-signup" type="password" required className="bg-gray-800 border-gray-700" />
+                <Input 
+                  id="password-signup" 
+                  type="password" 
+                  required 
+                  className="bg-gray-800 border-gray-700" 
+                  value={signupPassword}
+                  onChange={(e) => setSignupPassword(e.target.value)}
+                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="confirm-password">Confirm Password</Label>
-                <Input id="confirm-password" type="password" required className="bg-gray-800 border-gray-700" />
+                <Input 
+                  id="confirm-password" 
+                  type="password" 
+                  required 
+                  className="bg-gray-800 border-gray-700" 
+                  value={signupConfirmPassword}
+                  onChange={(e) => setSignupConfirmPassword(e.target.value)}
+                />
               </div>
             </CardContent>
             <CardFooter>
