@@ -14,6 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from '../firebase'
+import { getFirestore, doc, updateDoc, arrayUnion } from "firebase/firestore"
 
 interface DashboardProps {
   profileImage: string

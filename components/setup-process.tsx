@@ -5,6 +5,8 @@ import SelfieCaptureStep from "@/components/selfie-capture-step"
 import TimerDialog from "@/components/timer-dialog"
 import WorkOnDialog from "@/components/work-on-dialog"
 import Dashboard from "@/components/dashboard"
+import { auth } from '../firebase'
+import { getFirestore, doc, updateDoc, arrayUnion } from "firebase/firestore"
 
 export default function SetupProcess() {
   const [setupStep, setSetupStep] = useState<"selfie" | "timer" | "workOn" | "dashboard">("selfie")
@@ -22,9 +24,34 @@ export default function SetupProcess() {
     setSetupStep("workOn")
   }
 
-  const handleWorkOnSet = (task: string) => {
+  const handleWorkOnSet = async (task: string) => {
     setWorkOnTask(task)
     setSetupStep("dashboard")
+    const db = getFirestore()
+    const user = auth.currentUser;
+    if(user) {
+      try {
+        const session = {
+          task: task,
+          timestamp: new Date().toISOString(),
+          duration: timerDuration,
+          emotionAlerts: 0,
+          postureAlerts: 0,
+        };
+
+        const userRef = doc(db, "users", user.uid);
+
+        await updateDoc(userRef, {
+          sessions: arrayUnion(session),
+        });
+
+        console.log("session added successfully")
+      } catch (error) {
+        console.error("Error adding session:", error);
+      }
+    } else {
+      console.error("User is not authenticated")
+    }
   }
 
   return (
