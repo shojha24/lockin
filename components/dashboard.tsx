@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from '../firebase'
-import { getFirestore, doc, getDoc, updateDoc, arrayUnion, onSnapshot } from "firebase/firestore"
+import { getFirestore, doc, getDocs, updateDoc, arrayUnion, onSnapshot, getDoc, collection, query, orderBy, limit } from "firebase/firestore"
 
 interface DashboardProps {
   profileImage: string
@@ -33,7 +33,6 @@ export default function Dashboard({ profileImage, duration, task }: DashboardPro
 
   const db = getFirestore(); 
   const user = auth.currentUser;
-  const userDocRef = doc(db, "users", user.uid)
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -52,52 +51,78 @@ export default function Dashboard({ profileImage, duration, task }: DashboardPro
   }, [])
 
   useEffect(() => {
-    let unsubscribe: () => void
-
-    onAuthStateChanged(auth, (user) => {
-      if (user) {
-        const userDocSnap = getDoc(userDocRef)
-        // You probably need to find the *current session* you're in
-        // Here I assume you can somehow find the right session id (maybe from props or context)
+    let unsubscribeSession: (() => void) | null = null;
+    let unsubscribeAuth: (() => void) | null = null;
   
-        const sessionId = getSessionIndex()
-        const sessionRef = doc(db, "users", user.uid, "sessions", sessionId)
+    const fetchAndListen = async () => {
+      unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
+        if (!user) {
+          console.error("No user logged in.");
+          return;
+        }
   
-        unsubscribe = onSnapshot(sessionRef, (sessionSnap) => {
-          if (sessionSnap.exists()) {
-            const sessionData = sessionSnap.data()
+        try {
+          console.log("User logged in:", user.uid);
   
-            if (sessionData.notes) {
-              const newActivities = sessionData.notes.map(
-                (note: { timestamp: string; description: string }) =>
-                  `[${note.timestamp}] ${note.description}`
-              )
-  
-              // Update the local activities array
-              setActivities(newActivities.reverse()) // reverse to show latest first
-            }
+          const db = getFirestore();
+          const userDocRef = doc(db, "users", user.uid);
+          
+          // First, get the user document to check if it exists
+          const userDocSnap = await getDoc(userDocRef);
+          
+          if (!userDocSnap.exists()) {
+            console.error("No user document found.");
+            return;
           }
-        })
-      }
-    })
+          
+          // Get sessions collection reference instead of trying to access it from user document
+          const sessionsCollectionRef = collection(db, "users", user.uid, "sessions");
+          const sessionsQuery = query(sessionsCollectionRef, orderBy("createdAt", "desc"), limit(1));
+          const sessionsSnapshot = await getDocs(sessionsQuery);
+          
+          if (sessionsSnapshot.empty) {
+            console.error("No sessions found for user.");
+            return;
+          }
+          
+          // Get the most recent session document
+          const sessionDoc = sessionsSnapshot.docs[0];
+          const sessionId = sessionDoc.id;
+          
+          // Now set up the listener on this specific session
+          const sessionRef = doc(db, "users", user.uid, "sessions", sessionId);
+          
+          unsubscribeSession = onSnapshot(sessionRef, (sessionSnap) => {
+            if (!sessionSnap.exists()) {
+              console.error("Session document does not exist.");
+              return;
+            }
+  
+            const sessionData = sessionSnap.data();
+            if (sessionData?.notes) {
+              const newActivities: string[] = [];
+              for (let i = 0; i < sessionData.notes.length; i += 2) {
+                const timestamp = sessionData.notes[i];
+                const description = sessionData.notes[i + 1];
+                newActivities.push(`[${timestamp}] ${description}`);
+              }
+              setActivities(newActivities.reverse());
+            }
+          });
+        } catch (error) {
+          console.error("Error setting up session listener:", error);
+        }
+      });
+    };
+  
+    fetchAndListen();
   
     return () => {
-      if (unsubscribe) unsubscribe()
-    }
-  }, [])
-
-  const getSessionIndex = async () => {
-    const userDocSnap = await getDoc(userDocRef)
-    if (userDocSnap.exists()) {
-      const userData = userDocSnap.data()
-      const sessions = userData.sessions || []
-      return sessions.length - 1;
-    } else {
-      console.error("No user document found")
-      return -1;
-    }
-  }
-
+      if (unsubscribeAuth) unsubscribeAuth();
+      if (unsubscribeSession) unsubscribeSession();
+    };
+  }, []);
+  
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600)
     const minutes = Math.floor((seconds % 3600) / 60)
