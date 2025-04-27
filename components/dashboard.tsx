@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from '../firebase'
-import { getFirestore, doc, getDocs, updateDoc, arrayUnion, onSnapshot, getDoc, collection, query, orderBy, limit } from "firebase/firestore"
+import { getFirestore, doc, onSnapshot, getDoc, collection, query, orderBy, limit } from "firebase/firestore"
 
 interface DashboardProps {
   profileImage: string
@@ -30,9 +30,9 @@ export default function Dashboard({ profileImage, duration, task }: DashboardPro
   const [activities, setActivities] = useState<string[]>([])
   const [sessionEnded, setSessionEnded] = useState(false)
   const [showEndDialog, setShowEndDialog] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
 
-  const db = getFirestore(); 
-  const user = auth.currentUser;
+  const db = getFirestore();
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -55,62 +55,82 @@ export default function Dashboard({ profileImage, duration, task }: DashboardPro
     let unsubscribeAuth: (() => void) | null = null;
   
     const fetchAndListen = async () => {
+      setIsLoading(true);
+      
       unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
         if (!user) {
           console.error("No user logged in.");
+          setIsLoading(false);
           return;
         }
   
         try {
           console.log("User logged in:", user.uid);
   
-          const db = getFirestore();
           const userDocRef = doc(db, "users", user.uid);
-          
-          // First, get the user document to check if it exists
           const userDocSnap = await getDoc(userDocRef);
           
           if (!userDocSnap.exists()) {
             console.error("No user document found.");
+            setIsLoading(false);
             return;
           }
           
-          // Get sessions collection reference instead of trying to access it from user document
-          const sessionsCollectionRef = collection(db, "users", user.uid, "sessions");
-          const sessionsQuery = query(sessionsCollectionRef, orderBy("createdAt", "desc"), limit(1));
-          const sessionsSnapshot = await getDocs(sessionsQuery);
+          // Get the user's sessions data
+          const userData = userDocSnap.data();
           
-          if (sessionsSnapshot.empty) {
-            console.error("No sessions found for user.");
-            return;
-          }
-          
-          // Get the most recent session document
-          const sessionDoc = sessionsSnapshot.docs[0];
-          const sessionId = sessionDoc.id;
-          
-          // Now set up the listener on this specific session
-          const sessionRef = doc(db, "users", user.uid, "sessions", sessionId);
-          
-          unsubscribeSession = onSnapshot(sessionRef, (sessionSnap) => {
-            if (!sessionSnap.exists()) {
-              console.error("Session document does not exist.");
-              return;
-            }
-  
-            const sessionData = sessionSnap.data();
-            if (sessionData?.notes) {
-              const newActivities: string[] = [];
-              for (let i = 0; i < sessionData.notes.length; i += 2) {
-                const timestamp = sessionData.notes[i];
-                const description = sessionData.notes[i + 1];
-                newActivities.push(`[${timestamp}] ${description}`);
+          // Check if sessions is an array in the user document
+          if (userData.sessions && Array.isArray(userData.sessions)) {
+            // Get the most recent session (last item in the array)
+            const sessionData = userData.sessions.length > 0 ? 
+              userData.sessions[userData.sessions.length - 1] : null;
+              
+            // Set up listener on the user document to get real-time updates
+            unsubscribeSession = onSnapshot(userDocRef, (doc) => {
+              const updatedUserData = doc.data();
+              if (updatedUserData?.sessions && Array.isArray(updatedUserData.sessions)) {
+                const latestSession = updatedUserData.sessions.length > 0 ? 
+                  updatedUserData.sessions[updatedUserData.sessions.length - 1] : null;
+                
+                if (latestSession?.notes) {
+                  const newActivities: string[] = [];
+                  for (let i = 0; i < latestSession.notes.length; i += 2) {
+                    const timestamp = latestSession.notes[i];
+                    const description = latestSession.notes[i + 1];
+                    newActivities.push(`[${timestamp}] ${description}`);
+                  }
+                  setActivities(newActivities.reverse());
+                }
               }
-              setActivities(newActivities.reverse());
-            }
-          });
+              setIsLoading(false);
+            });
+          } 
+          // If sessions is a subcollection instead of an array
+          else {
+            // Query the sessions subcollection to get the most recent session
+            const sessionsRef = collection(db, "users", user.uid, "sessions");
+            const q = query(sessionsRef, orderBy("createdAt", "desc"), limit(1));
+            
+            unsubscribeSession = onSnapshot(q, (querySnapshot) => {
+              if (!querySnapshot.empty) {
+                const latestSession = querySnapshot.docs[0].data();
+                
+                if (latestSession.notes) {
+                  const newActivities: string[] = [];
+                  for (let i = 0; i < latestSession.notes.length; i += 2) {
+                    const timestamp = latestSession.notes[i];
+                    const description = latestSession.notes[i + 1];
+                    newActivities.push(`[${timestamp}] ${description}`);
+                  }
+                  setActivities(newActivities.reverse());
+                }
+              }
+              setIsLoading(false);
+            });
+          }
         } catch (error) {
           console.error("Error setting up session listener:", error);
+          setIsLoading(false);
         }
       });
     };
@@ -139,7 +159,6 @@ export default function Dashboard({ profileImage, duration, task }: DashboardPro
     const date = new Date().toLocaleDateString()
     const startTime = new Date(Date.now() - duration * 60 * 1000).toLocaleTimeString()
     const endTime = new Date().toLocaleTimeString()
-
     const sessionSummary = [
       "LOCK IN - SESSION REPORT",
       "=======================",
@@ -218,13 +237,21 @@ export default function Dashboard({ profileImage, duration, task }: DashboardPro
             <CardTitle className="text-xl font-bold">Recent Activities</CardTitle>
           </CardHeader>
           <CardContent>
-            <ul className="space-y-2">
-              {activities.map((activity, index) => (
-                <li key={index} className="text-sm text-gray-300">
-                  {activity}
-                </li>
-              ))}
-            </ul>
+            {isLoading ? (
+              <p className="text-gray-400">Loading activities...</p>
+            ) : (
+              <ul className="space-y-2">
+                {activities.length > 0 ? (
+                  activities.map((activity, index) => (
+                    <li key={index} className="text-sm text-gray-300">
+                      {activity}
+                    </li>
+                  ))
+                ) : (
+                  <p className="text-gray-400">No activities recorded yet.</p>
+                )}
+              </ul>
+            )}
           </CardContent>
           {sessionEnded && (
             <CardFooter className="border-t border-gray-800 pt-4">
