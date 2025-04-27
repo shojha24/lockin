@@ -40,7 +40,13 @@ export default function SelfieCaptureStep({ onCapture }: SelfieCaptureStepProps)
 
   const stopCamera = () => {
     if (stream) {
-      stream.getTracks().forEach((track) => track.stop())
+      stream.getTracks().forEach((track) => {
+        track.stop()
+        track.enabled = false
+      })
+      if (videoRef.current) {
+        videoRef.current.srcObject = null
+      }
       setStream(null)
     }
   }
@@ -65,6 +71,11 @@ export default function SelfieCaptureStep({ onCapture }: SelfieCaptureStepProps)
     setCapturedImage(null)
     startCamera()
   }
+  
+  const handleContinue = () => {
+    onCapture(capturedImage!)
+    stopCamera()
+  }
 
   useEffect(() => {
     startCamera()
@@ -84,7 +95,7 @@ export default function SelfieCaptureStep({ onCapture }: SelfieCaptureStepProps)
                 <RefreshCw className="mr-2 h-4 w-4" />
                 Retake
               </Button>
-              <Button onClick={() => onCapture(capturedImage)}>Continue</Button>
+              <Button onClick={handleContinue}>Continue</Button>
             </div>
           </div>
         ) : (
