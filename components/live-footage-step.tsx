@@ -1,4 +1,4 @@
-"use client"
+/*"use client"
 
 import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -135,3 +135,4 @@ export default function LiveFootageStep({ profileImage }: LiveFootageStepProps) 
     </div>
   )
 }
+*/

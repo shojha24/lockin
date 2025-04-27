@@ -1,4 +1,4 @@
-"use client"
+/*"use client"
 
 import { useRef, useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
@@ -143,9 +143,9 @@ export default function SelfieCapture() {
             )}
           </div>
         )}
-        {/* Hidden canvas for capturing the image */}
+        { "Hidden canvas for capturing the image" }
         <canvas ref={canvasRef} className="hidden" />
       </CardContent>
     </Card>
   )
-}
+} */

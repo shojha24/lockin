@@ -34,9 +34,10 @@ export default function SetupProcess() {
         const session = {
           task: task,
           timestamp: new Date().toISOString(),
-          duration: timerDuration,
+          duration: timerDuration * 60,
           emotionAlerts: 0,
           postureAlerts: 0,
+          notes: []
         };
 
         const userRef = doc(db, "users", user.uid);

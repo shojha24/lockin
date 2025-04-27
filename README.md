@@ -1,3 +1,11 @@
+TODO: 
+- logout function
+    - automatic logout on exit?
+- stopwatch
+- bar display in history
+- actual
+- have an actual domain
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
