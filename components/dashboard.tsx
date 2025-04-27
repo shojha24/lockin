@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from '../firebase'
-import { getFirestore, doc, updateDoc, arrayUnion } from "firebase/firestore"
+import { getFirestore, doc, getDoc, updateDoc, arrayUnion, onSnapshot } from "firebase/firestore"
 
 interface DashboardProps {
   profileImage: string
@@ -30,6 +30,10 @@ export default function Dashboard({ profileImage, duration, task }: DashboardPro
   const [activities, setActivities] = useState<string[]>([])
   const [sessionEnded, setSessionEnded] = useState(false)
   const [showEndDialog, setShowEndDialog] = useState(false)
+
+  const db = getFirestore(); 
+  const user = auth.currentUser;
+  const userDocRef = doc(db, "users", user.uid)
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -48,29 +52,50 @@ export default function Dashboard({ profileImage, duration, task }: DashboardPro
   }, [])
 
   useEffect(() => {
-    const activityInterval = setInterval(() => {
-      if (!sessionEnded) {
-        const newActivity = generateRandomActivity()
-        const timestamp = new Date().toLocaleTimeString()
-        setActivities((prevActivities) => [`[${timestamp}] ${newActivity}`, ...prevActivities.slice(0, 9)])
+    let unsubscribe: () => void
+
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        const userDocSnap = getDoc(userDocRef)
+        // You probably need to find the *current session* you're in
+        // Here I assume you can somehow find the right session id (maybe from props or context)
+  
+        const sessionId = getSessionIndex()
+        const sessionRef = doc(db, "users", user.uid, "sessions", sessionId)
+  
+        unsubscribe = onSnapshot(sessionRef, (sessionSnap) => {
+          if (sessionSnap.exists()) {
+            const sessionData = sessionSnap.data()
+  
+            if (sessionData.notes) {
+              const newActivities = sessionData.notes.map(
+                (note: { timestamp: string; description: string }) =>
+                  `[${note.timestamp}] ${note.description}`
+              )
+  
+              // Update the local activities array
+              setActivities(newActivities.reverse()) // reverse to show latest first
+            }
+          }
+        })
       }
-    }, 10000) // New activity every 10 seconds
+    })
+  
+    return () => {
+      if (unsubscribe) unsubscribe()
+    }
+  }, [])
 
-    return () => clearInterval(activityInterval)
-  }, [sessionEnded])
-
-  const generateRandomActivity = () => {
-    const activities = [
-      "Opened a new browser tab",
-      "Typed in a document",
-      "Clicked on a link",
-      "Scrolled through a page",
-      "Watched a video",
-      "Read an article",
-      "Checked email",
-      "Used a productivity app",
-    ]
-    return activities[Math.floor(Math.random() * activities.length)]
+  const getSessionIndex = async () => {
+    const userDocSnap = await getDoc(userDocRef)
+    if (userDocSnap.exists()) {
+      const userData = userDocSnap.data()
+      const sessions = userData.sessions || []
+      return sessions.length - 1;
+    } else {
+      console.error("No user document found")
+      return -1;
+    }
   }
 
   const formatTime = (seconds: number) => {
