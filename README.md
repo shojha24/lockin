@@ -1,3 +1,5 @@
+NOT FOR JUDGING PURPOSES
+
 TODO: 
 - logout function
     - automatic logout on exit?
